@@ -33,6 +33,10 @@ resource "aws_lambda_function" "soc_lambda" {
 
   filename         = "${path.module}/lambda/function.zip"
   source_code_hash = filebase64sha256("${path.module}/lambda/function.zip")
+
+  depends_on = [
+  aws_cloudwatch_log_group.soc_log_group
+  ]
 }
 
 ##API Gateway
@@ -68,4 +72,9 @@ resource "aws_lambda_permission" "apigw" {
   principal     = "apigateway.amazonaws.com"
 
   source_arn = "${aws_apigatewayv2_api.http_api.execution_arn}/*/*"
+}
+
+resource "aws_cloudwatch_log_group" "soc_log_group" {
+  name              = "/aws/lambda/soc-demo-lambda-1"
+  retention_in_days = 7
 }
