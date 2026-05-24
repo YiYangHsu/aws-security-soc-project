@@ -78,3 +78,31 @@ resource "aws_cloudwatch_log_group" "soc_log_group" {
   name              = "/aws/lambda/soc-demo-lambda"
   retention_in_days = 7
 }
+
+resource "aws_cloudwatch_log_metric_filter" "api_requests_filter" {
+  name = "ApiRequestCount"
+  log_group_name = aws_cloudwatch_log_group.soc_log_group.name
+
+  pattern = "API_REQUEST"
+
+  metric_transformation {
+    name      = "ApiRequestMetric"
+    namespace = "SOCProject"
+    value     = "1"
+  }
+}
+
+resource "aws_cloudwatch_metric_alarm" "high_api_requests" {
+  alarm_name          = "HighAPIRequestAlarm"
+  comparison_operator = "GreaterThanThreshold"
+  evaluation_periods  = 1
+  metric_name         = "ApiRequestMetric"
+  namespace           = "SOCProject"
+  period              = 60
+  statistic           = "Sum"
+  threshold           = 5
+
+  alarm_description = "Triggered when API requests exceed threshold"
+
+  treat_missing_data = "notBreaching"
+}
