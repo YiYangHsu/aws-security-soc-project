@@ -75,6 +75,6 @@ resource "aws_lambda_permission" "apigw" {
 }
 
 resource "aws_cloudwatch_log_group" "soc_log_group" {
-  name              = "/aws/lambda/soc-demo-lambda-1"
+  name              = "/aws/lambda/soc-demo-lambda"
   retention_in_days = 7
 }
