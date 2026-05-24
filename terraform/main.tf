@@ -105,4 +105,17 @@ resource "aws_cloudwatch_metric_alarm" "high_api_requests" {
   alarm_description = "Triggered when API requests exceed threshold"
 
   treat_missing_data = "notBreaching"
+
+  alarm_actions = [aws_sns_topic.security_alerts.arn]
 }
+
+resource "aws_sns_topic" "security_alerts" {
+  name = "security-alerts"
+}
+
+resource "aws_sns_topic_subscription" "email_alerts" {
+  topic_arn = aws_sns_topic.security_alerts.arn
+  protocol  = "email"
+  endpoint  = "yiyanghsu@gmail.com"
+}
+
