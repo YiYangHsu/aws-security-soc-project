@@ -37,6 +37,12 @@ resource "aws_lambda_function" "soc_lambda" {
   depends_on = [
   aws_cloudwatch_log_group.soc_log_group
   ]
+
+  tags = {
+    Environment = "Lab"
+    Project     = "AWS-SOC"
+    Owner       = "Yang"
+  }
 }
 
 ##API Gateway
@@ -59,10 +65,29 @@ resource "aws_apigatewayv2_route" "default_route" {
   target = "integrations/${aws_apigatewayv2_integration.lambda_integration.id}"
 }
 
+resource "aws_cloudwatch_log_group" "api_gateway_logs" {
+  name              = "/aws/apigateway/soc-demo-api"
+  retention_in_days = 7
+}
+
 resource "aws_apigatewayv2_stage" "default_stage" {
   api_id      = aws_apigatewayv2_api.http_api.id
   name        = "$default"
   auto_deploy = true
+
+  access_log_settings {
+    destination_arn = aws_cloudwatch_log_group.api_gateway_logs.arn
+
+    format = jsonencode({
+      requestId      = "$context.requestId"
+      sourceIp       = "$context.identity.sourceIp"
+      requestTime    = "$context.requestTime"
+      httpMethod     = "$context.httpMethod"
+      routeKey       = "$context.routeKey"
+      status         = "$context.status"
+      responseLength = "$context.responseLength"  
+    })
+  }
 }
 
 resource "aws_lambda_permission" "apigw" {
@@ -76,7 +101,9 @@ resource "aws_lambda_permission" "apigw" {
 
 resource "aws_cloudwatch_log_group" "soc_log_group" {
   name              = "/aws/lambda/soc-demo-lambda"
+  skip_destroy = false
   retention_in_days = 7
+  # Security investigations often happen AFTER incidents
 }
 
 resource "aws_cloudwatch_log_metric_filter" "api_requests_filter" {
@@ -111,6 +138,7 @@ resource "aws_cloudwatch_metric_alarm" "high_api_requests" {
 
 resource "aws_sns_topic" "security_alerts" {
   name = "security-alerts"
+  kms_master_key_id = "alias/aws/sns"
 }
 
 resource "aws_sns_topic_subscription" "email_alerts" {
@@ -148,6 +176,12 @@ resource "aws_lambda_function" "incident_response_lambda" {
 
   filename = "${path.module}/incident-response/function.zip"
   source_code_hash = filebase64sha256("${path.module}/incident-response/function.zip")
+
+  tags = {
+    Environment = "Lab"
+    Project     = "AWS-SOC"
+    Owner       = "Yang"
+  }
 }
 
 resource "aws_sns_topic_subscription" "incident_response_subscription" {
