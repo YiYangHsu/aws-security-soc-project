@@ -184,6 +184,13 @@ resource "aws_lambda_function" "incident_response_lambda" {
   }
 }
 
+resource "aws_cloudwatch_log_group" "response_log_group" {
+  name              = "/aws/lambda/incident-response-lambda"
+  skip_destroy = false
+  retention_in_days = 7
+  # Security investigations often happen AFTER incidents
+}
+
 resource "aws_sns_topic_subscription" "incident_response_subscription" {
   topic_arn = aws_sns_topic.security_alerts.arn
   protocol = "lambda"
@@ -196,4 +203,59 @@ resource "aws_lambda_permission" "allow_sns_invoke" {
   function_name = aws_lambda_function.incident_response_lambda.function_name
   principal = "sns.amazonaws.com"
   source_arn = aws_sns_topic.security_alerts.arn
+}
+
+resource "aws_cloudwatch_log_metric_filter" "suspicious_user_agent_filter" {
+  name = "SuspiciousUserAgentFilter"
+  log_group_name = aws_cloudwatch_log_group.soc_log_group.name
+
+  pattern = "SUSPICIOUS_USER_AGENT"
+
+  metric_transformation {
+    name = "SuspiciousUserAgentMetric"
+    namespace = "SOCProject"
+    value = "1"
+  }
+}
+
+resource "aws_cloudwatch_metric_alarm" "suspicious_user_agent_alarm" {
+  alarm_name = "SuspiciousUserAgentAlarm"
+  comparison_operator = "GreaterThanThreshold"
+  evaluation_periods  = 1
+
+  metric_name = "SuspiciousUserAgentMetric"
+  namespace = "SOCProject"
+
+  period    = 60
+  statistic = "Sum"
+  threshold = 2
+
+  alarm_description = "Detect suspicious user-agent activity"
+  treat_missing_data = "notBreaching"
+  alarm_actions = [aws_sns_topic.security_alerts.arn]
+
+}
+
+resource "aws_cloudwatch_metric_alarm" "lambda_error_alarm" {
+  alarm_name = "LambdaErrorAlarm"
+  comparison_operator = "GreaterThanThreshold"
+  evaluation_periods  = 1
+
+  metric_name = "Errors"
+  namespace   = "AWS/Lambda"
+
+  period    = 60
+  statistic = "Sum"
+  threshold = 1
+
+  dimensions = {
+    FunctionName = aws_lambda_function.soc_lambda.function_name
+  }
+
+  alarm_description = "Detect Lambda execution errors"
+
+  treat_missing_data = "notBreaching"
+
+  alarm_actions = [aws_sns_topic.security_alerts.arn]
+
 }
