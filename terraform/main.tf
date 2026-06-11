@@ -368,3 +368,74 @@ resource "aws_cloudwatch_dashboard" "soc_dashboard" {
   })
 }
 
+resource "time_static" "bucket_timestamp" {
+
+}
+
+resource "aws_s3_bucket" "cloudtrail_logs" {
+  bucket = "yang-aws-soc-cloudtrail-logs-20260611-033211"
+}
+
+# Add bucket ownership controls
+resource "aws_s3_bucket_ownership_controls" "cloudtrail_logs" {
+  bucket = aws_s3_bucket.cloudtrail_logs.id
+  rule {
+    object_ownership = "BucketOwnerPreferred"
+  }
+}
+
+# Add bucket ACL (required for CloudTrail)
+resource "aws_s3_bucket_acl" "cloudtrail_logs" {
+  depends_on = [aws_s3_bucket_ownership_controls.cloudtrail_logs]
+  bucket     = aws_s3_bucket.cloudtrail_logs.id
+  acl        = "private"
+}
+
+# Add the bucket policy for CloudTrail
+resource "aws_s3_bucket_policy" "cloudtrail_logs" {
+  bucket = aws_s3_bucket.cloudtrail_logs.id
+  policy = data.aws_iam_policy_document.cloudtrail_bucket_policy.json
+}
+
+data "aws_iam_policy_document" "cloudtrail_bucket_policy" {
+  statement {
+    effect = "Allow"
+    principals {
+      type        = "Service"
+      identifiers = ["cloudtrail.amazonaws.com"]
+    }
+    actions = ["s3:GetBucketAcl"]
+    resources = [aws_s3_bucket.cloudtrail_logs.arn]
+  }
+  
+  statement {
+    effect = "Allow"
+    principals {
+      type        = "Service"
+      identifiers = ["cloudtrail.amazonaws.com"]
+    }
+    actions = ["s3:PutObject"]
+    resources = ["${aws_s3_bucket.cloudtrail_logs.arn}/AWSLogs/${data.aws_caller_identity.current.account_id}/*"]
+    
+    condition {
+      test     = "StringEquals"
+      variable = "s3:x-amz-acl"
+      values   = ["bucket-owner-full-control"]
+    }
+  }
+}
+
+# Get current AWS account ID
+data "aws_caller_identity" "current" {}
+
+resource "aws_cloudtrail" "soc_trail" {
+  name = "soc-security-trail"
+  s3_bucket_name =  aws_s3_bucket.cloudtrail_logs.id
+  include_global_service_events = true
+  is_multi_region_trail = true
+
+  enable_logging = true
+  enable_log_file_validation = true
+}
+
+#Step4
