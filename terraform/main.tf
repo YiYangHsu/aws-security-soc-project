@@ -373,7 +373,7 @@ resource "time_static" "bucket_timestamp" {
 }
 
 resource "aws_s3_bucket" "cloudtrail_logs" {
-  bucket = "yang-aws-soc-cloudtrail-logs-20260611-033211"
+  bucket = "yang-aws-soc-cloudtrail-logs-20260611"
 }
 
 # Add bucket ownership controls
@@ -404,19 +404,19 @@ data "aws_iam_policy_document" "cloudtrail_bucket_policy" {
       type        = "Service"
       identifiers = ["cloudtrail.amazonaws.com"]
     }
-    actions = ["s3:GetBucketAcl"]
+    actions   = ["s3:GetBucketAcl"]
     resources = [aws_s3_bucket.cloudtrail_logs.arn]
   }
-  
+
   statement {
     effect = "Allow"
     principals {
       type        = "Service"
       identifiers = ["cloudtrail.amazonaws.com"]
     }
-    actions = ["s3:PutObject"]
+    actions   = ["s3:PutObject"]
     resources = ["${aws_s3_bucket.cloudtrail_logs.arn}/AWSLogs/${data.aws_caller_identity.current.account_id}/*"]
-    
+
     condition {
       test     = "StringEquals"
       variable = "s3:x-amz-acl"
@@ -429,13 +429,122 @@ data "aws_iam_policy_document" "cloudtrail_bucket_policy" {
 data "aws_caller_identity" "current" {}
 
 resource "aws_cloudtrail" "soc_trail" {
-  name = "soc-security-trail"
-  s3_bucket_name =  aws_s3_bucket.cloudtrail_logs.id
+  name                          = "soc-security-trail"
+  s3_bucket_name                = aws_s3_bucket.cloudtrail_logs.id
   include_global_service_events = true
-  is_multi_region_trail = true
+  is_multi_region_trail         = true
 
-  enable_logging = true
+  enable_logging             = true
   enable_log_file_validation = true
+
+
+  cloud_watch_logs_group_arn = "${aws_cloudwatch_log_group.cloudtrail_logs.arn}:*"
+  cloud_watch_logs_role_arn  = aws_iam_role.cloudtrail_cloudwatch_role.arn
 }
 
-#Step4
+# Add IAM role for CloudTrail to send logs to CloudWatch
+resource "aws_iam_role" "cloudtrail_cloudwatch_role" {
+  name = "cloudtrail-cloudwatch-role"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Action = "sts:AssumeRole"
+        Effect = "Allow"
+        Principal = {
+          Service = "cloudtrail.amazonaws.com"
+        }
+      }
+    ]
+  })
+}
+
+resource "aws_iam_role_policy" "cloudtrail_cloudwatch_policy" {
+  name = "cloudtrail-cloudwatch-policy"
+  role = aws_iam_role.cloudtrail_cloudwatch_role.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = [
+          "logs:CreateLogStream",
+          "logs:PutLogEvents"
+        ]
+        Resource = "${aws_cloudwatch_log_group.cloudtrail_logs.arn}:*"
+      }
+    ]
+  })
+}
+
+resource "aws_cloudwatch_log_group" "cloudtrail_logs" {
+  name              = "/aws/cloudtrail/soc-security-trail"
+  retention_in_days = 7
+}
+
+resource "aws_cloudwatch_log_metric_filter" "iam_user_created" {
+  name           = "IAMUserCreated"
+  log_group_name = aws_cloudwatch_log_group.cloudtrail_logs.name
+
+  pattern = "{ ($.eventName = CreateUser) }"
+
+  metric_transformation {
+    name      = "IAMUserCreatedMetric"
+    namespace = "SOCProject"
+    value     = "1"
+  }
+}
+
+
+resource "aws_cloudwatch_log_metric_filter" "root_usage_filter" {
+  name           = "RootAccountUsage"
+  log_group_name = aws_cloudwatch_log_group.cloudtrail_logs.name
+
+  pattern = "{$.userIdentity.type = Root}"
+
+  metric_transformation {
+    name      = "RootUsageMetric"
+    namespace = "SOCProject"
+    value     = "1"
+  }
+}
+
+resource "aws_cloudwatch_metric_alarm" "iam_user_created_alarm" {
+  alarm_name          = "IAMUserCreatedAlarm"
+  comparison_operator = "GreaterThanThreshold"
+
+  evaluation_periods = 1
+
+  metric_name = "IAMUserCreatedMetric"
+  namespace   = "SOCProject"
+
+  statistic = "Sum"
+  period    = 300
+
+  threshold = 0
+
+  alarm_actions = [
+    aws_sns_topic.security_alerts.arn
+  ]
+}
+
+resource "aws_cloudwatch_metric_alarm" "root_usage_alarm" {
+  alarm_name = "RootAccountUsageAlarm"
+
+  comparison_operator = "GreaterThanThreshold"
+  evaluation_periods  = 1
+
+  metric_name = "RootUsageMetric"
+  namespace   = "SOCProject"
+
+  statistic = "Sum"
+  period    = 300
+
+  threshold = 0
+
+  alarm_actions = [
+    aws_sns_topic.security_alerts.arn
+  ]
+}
