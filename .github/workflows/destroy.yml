@@ -1,0 +1,46 @@
+name: Destroy Terraform Infrastructure
+
+on:
+    workflow_dispatch:  # Manual trigger only
+        inputs:
+            confirm:
+                description: 'Type "DESTROY" to confirm'
+                required: true
+                default: ''
+
+jobs:
+    destroy:
+        runs-on: ubuntu-latest
+
+        defaults:
+            run:
+                working-directory: terraform
+        
+        steps:
+        - name: Checkout Code
+          uses: actions/checkout@v4
+
+        - name: Configure AWS Credentials
+          uses: aws-actions/configure-aws-credentials@v4
+          with:
+            aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+            aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+            aws-region: us-east-1
+
+        - name: Setup Terraform
+          uses: hashicorp/setup-terraform@v3
+
+        - name: Confirm Destroy
+          if: github.event.inputs.confirm != 'DESTROY'
+          run: |
+            echo "You must type 'DESTROY' to confirm"
+            exit 1
+
+        - name: Terraform Init
+          run: terraform init
+
+        - name: Terraform Destroy Plan
+          run: terraform plan -destroy
+
+        - name: Terraform Destroy
+          run: terraform destroy -auto-approve
