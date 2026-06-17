@@ -30,6 +30,14 @@ jobs:
         - name: Setup Terraform
           uses: hashicorp/setup-terraform@v3
 
+        - name: Create Lambda ZIP files for destroy
+          run: |
+            mkdir -p lambda incident-response
+            echo "dummy" > lambda/dummy.txt
+            echo "dummy" > incident-response/dummy.txt
+            cd lambda && zip -r function.zip . && cd ..
+            cd incident-response && zip -r function.zip . && cd ..
+
         - name: Confirm Destroy
           if: github.event.inputs.confirm != 'DESTROY'
           run: |
