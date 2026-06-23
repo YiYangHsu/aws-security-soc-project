@@ -1,3 +1,11 @@
+terraform {
+  backend "s3" {
+    bucket = "yang-terraform-state-20260611"
+    key    = "soc-demo/terraform.tfstate"
+    region = "us-east-1"
+  }
+}
+
 provider "aws" {
   region = "us-east-1"
 }
